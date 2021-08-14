@@ -3,9 +3,8 @@ const TradeOfferManager = require('steam-tradeoffer-manager');
 const SteamUser = require('steam-user');
 const SteamCommunity = require('steamcommunity');
 
-/** @type {typeof import('telegraf').Telegraf} */
 const { Telegraf } = require('telegraf');
-const {Keyboard, Key} = require("./lib");
+const { Keyboard, Key } = require('telegram-keyboard');
 
 const config = require('./config');
 const SteamAccountManager = require('./lib/steam/SteamAccountManager');
@@ -17,10 +16,15 @@ let OffersData = [];
 ///.
 // Functions
 ///.
+
 const clamp = (n, from, to) => Math.min(Math.max(n, from), to);
 
-function getCode() {
-    return SteamTotp.generateAuthCode(config.shared_secret);
+const getCode = () => SteamTotp.generateAuthCode(config.shared_secret);
+
+const remArray = (offer) => {
+    const index = OffersData.indexOf(offer);
+    if (index > -1)
+        OffersData.splice(index, 1);
 }
 
 ///.
@@ -36,16 +40,16 @@ let tradesManager = new TradeOfferManager({
     "language": "en"
 });
 
-let SteamBot = new SteamAccountManager(client, community, tradesManager)
+let SteamBot = new SteamAccountManager(client, community, tradesManager);
 
 try {
     SteamBot.getClient().logOn({
         "accountName": config.username,
         "password": config.password,
-        "twoFactorCode": SteamTotp.generateAuthCode(config.shared_secret)
+        "twoFactorCode": getCode()
     });
 } catch {
-    console.log('Error in login proc. Check steam guard or username, password... in config file. ')
+    console.log('Error in login proc. Check steam guard or username, password... in config file. ');
 }
 
 SteamBot.getClient().on('loggedOn', () => {
@@ -66,7 +70,8 @@ SteamBot.getTradeOfferBot().on("newOffer", async (offerResponse) => {
         await SteamBot.acceptTradeOffer(offerResponse, MAX_RETRIES);
     } else {
         OffersData.push(offerResponse);
-        // await bot.telegram.sendMessage(parseInt(config.owner_id), `Received ${OffersData.length} new offer, add his to list!\nUse /trades command for get trades.`);
+
+        await bot.telegram.sendMessage(parseInt(config.owner_id), `Received ${OffersData.length} new offer, add his to list!\nUse /trades command for get trades.`);
     }
 })
 
@@ -79,50 +84,37 @@ const bot = new Telegraf(config.bot_token);
 const kb = (without = 0) => {
     switch (without) {
         case 0:
-            return Keyboard.make([
-                [Key.callback('👈', 'prev')],
-                [Key.callback('❌', 'decline')],
-                [Key.callback('✅', 'accept')],
-                [Key.callback('👉', 'next')],
-            ]).inline()
+            return Keyboard.inline([
+                [Key.callback('👈', 'prev'), Key.callback('👉', 'next')],
+                [Key.callback('❌', 'decline'), Key.callback('✅', 'accept')]
+            ]);
 
             break;
         case 1:
-            return Keyboard.make([
-                [Key.callback('❌', 'decline')],
-                [Key.callback('✅', 'accept')],
+            return Keyboard.inline([
                 [Key.callback('👉', 'next')],
-            ]).inline()
+                [Key.callback('❌', 'decline'), Key.callback('✅', 'accept')]
+            ]);
 
             break;
         case 2:
-            return Keyboard.make([
+            return Keyboard.inline([
                 [Key.callback('👈', 'prev')],
-                [Key.callback('❌', 'decline')],
-                [Key.callback('✅', 'accept')],
-            ]).inline()
+                [Key.callback('❌', 'decline'), Key.callback('✅', 'accept')],
+            ]);
 
             break;
         case 3:
-            return Keyboard.make([
-                [Key.callback('❌', 'decline')],
-                [Key.callback('✅', 'accept')],
-            ]).inline()
+            return Keyboard.inline([
+                [Key.callback('❌', 'decline'), Key.callback('✅', 'accept')]
+            ]);
 
             break;
         case -1:
-            return Keyboard.make([]).inline()
+            return Keyboard.make([]).inline();
             break;
     }
 }
-
-bot.command('code', ctx => {
-    if (ctx.message.chat.id.toString() === config.owner_id)
-        bot.telegram.sendMessage(ctx.chat.id, `Your code: ${getCode()}`)
-    else
-        bot.telegram.sendMessage(ctx.chat.id, `Кыш отсюда!`)
-})
-
 const message = (offerNumber) => {
     const offer = new TradeOffer(OffersData[offerNumber]);
 
@@ -150,6 +142,13 @@ const message = (offerNumber) => {
     return giveStr + receiveStr;
 }
 
+bot.command('code', ctx => {
+    if (ctx.message.chat.id.toString() === config.owner_id)
+        bot.telegram.sendMessage(ctx.chat.id, `Your code: ${getCode()}`)
+    else
+        bot.telegram.sendMessage(ctx.chat.id, `Кыш отсюда! Your id: ${ctx.chat.id}`)
+})
+
 bot.command('trades', ctx => {
     if (ctx.message.chat.id.toString() === config.owner_id) {
         if (OffersData.length > 0)
@@ -161,20 +160,13 @@ bot.command('trades', ctx => {
 
 let currentOffer = 0;
 
-const remArray = (offer) => {
-    const index = OffersData.indexOf(offer);
-    if (index > -1)
-        OffersData.splice(index, 1);
-}
-
 bot.on('callback_query', async (ctx) => {
     const offer = OffersData[currentOffer];
 
     switch (ctx.callbackQuery.data) {
         case 'prev':
-            currentOffer = clamp(currentOffer - 1, 0, OffersData.length - 1)
-            console.log(`Current key - ${currentOffer}`)
-            break
+            currentOffer = clamp(currentOffer - 1, 0, OffersData.length - 1);
+            break;
         case 'decline':
             await SteamBot.declineTradeOffer(offer, MAX_RETRIES).then((res) => {
                 if (res === 1)
@@ -183,9 +175,8 @@ bot.on('callback_query', async (ctx) => {
 
 
             remArray(offer);
-            // OffersData.slice(currentOffer, 1);
             currentOffer = 0;
-            break
+            break;
         case 'accept':
             await SteamBot.acceptTradeOffer(offer, MAX_RETRIES).then((res) => {
                 if (res === 1)
@@ -193,26 +184,17 @@ bot.on('callback_query', async (ctx) => {
             });
 
             remArray(offer);
-            //OffersData.slice(currentOffer, 1);
             currentOffer = 0;
-            break
+            break;
         case 'next':
-            currentOffer = clamp(currentOffer + 1, 0, OffersData.length - 1)
-            console.log(`Current key - ${currentOffer}`)
-            break
+            currentOffer = clamp(currentOffer + 1, 0, OffersData.length - 1);
+            break;
     }
-
-    const maxPage = OffersData.length - 1;
 
     if (OffersData.length === 0)
         return ctx.editMessageText('Offers end!', kb(-1));
     else
         return ctx.editMessageText(message(currentOffer), kb(OffersData.length === 1 ? 3 : currentOffer === OffersData.length - 1 ? 2 : currentOffer === 0 ? 1 : 0));
-    // return ctx.editMessageText(message(currentOffer), kb(currentOffer === maxPage ? 2 : currentOffer === 0 ? 1 : OffersData.length === 1 ? 3 : 0));
-    //return ctx.editMessageText(message(currentOffer), kb(currentOffer === OffersData.length - 1 ? 2 : currentOffer === 0 && OffersData.length === 1 ? 3 : 1));
 })
 
 bot.launch();
-
-
-// нужно как то удалять подтв/откл трейды из OffersData

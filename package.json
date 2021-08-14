@@ -13,6 +13,7 @@
     "steam-tradeoffer-manager": "^2.10.3",
     "steam-user": "^4.19.12",
     "steamcommunity": "^3.43.1",
-    "telegraf": "^4.4.1"
+    "telegraf": "^4.4.1",
+    "telegram-keyboard": "^2.2.6"
   }
 }
