@@ -75,6 +75,18 @@ SteamBot.getTradeOfferBot().on("newOffer", async (offerResponse) => {
     }
 })
 
+let tempConfirmOffer = null;
+
+SteamBot.getTradeOfferBot().on('unknownOfferSent', async (offerResponse) => {
+    if (offerResponse.state == TradeOfferManager.ETradeOfferState.CreatedNeedsConfirmation) {
+        const offer = new TradeOffer(offerResponse);
+        const Id = offer.getPartnerId().toString();
+
+        tempConfirmOffer = offerResponse;
+        await bot.telegram.sendMessage(parseInt(config.owner_id), `Confirm this trade offer?\n\n\Trade with ${Id}\n\nTrId:${offerResponse.id}`, kbConfirm());
+    }
+});
+
 ///.
 // Telegram Bot
 ///.
@@ -115,6 +127,11 @@ const kb = (without = 0) => {
             break;
     }
 }
+const kbConfirm = () => {
+    return Keyboard.inline([
+        [Key.callback('❌', 'declineConfirm'), Key.callback('✅', `acceptConfirm`)]
+    ]);
+}
 const message = (offerNumber) => {
     const offer = new TradeOffer(OffersData[offerNumber]);
 
@@ -154,7 +171,7 @@ bot.command('trades', ctx => {
         if (OffersData.length > 0)
             bot.telegram.sendMessage(ctx.chat.id, message(currentOffer), kb(1));
         else if (OffersData.length <= 0)
-            bot.telegram.sendMessage(ctx.chat.id, "You doesn't have a trades confrms.");
+            bot.telegram.sendMessage(ctx.chat.id, "You doesn't have a trades confirms.");
     }
 })
 
@@ -189,12 +206,27 @@ bot.on('callback_query', async (ctx) => {
         case 'next':
             currentOffer = clamp(currentOffer + 1, 0, OffersData.length - 1);
             break;
+
+        case 'acceptConfirm':
+            await SteamBot.acceptConfirmation(ctx.callbackQuery.message.text.split('TrId:').pop()).then((res) => {
+                if (res === 1)
+                    return ctx.editMessageText('Accept confirmed ✅', kb(-1));
+            });
+            break;
+        case 'declineConfirm':
+            await SteamBot.declineTradeOffer(ctx.callbackQuery.message.text.split('TrId:').pop()).then((res) => {
+                if (res === 1)
+                    return ctx.editMessageText('Trade confirm declained ❌', kb(-1));
+            });
+            break;
     }
 
-    if (OffersData.length === 0)
-        return ctx.editMessageText('Offers end!', kb(-1));
-    else
-        return ctx.editMessageText(message(currentOffer), kb(OffersData.length === 1 ? 3 : currentOffer === OffersData.length - 1 ? 2 : currentOffer === 0 ? 1 : 0));
+    if (ctx.callbackQuery.data != 'acceptConfirm' || ctx.callbackQuery.data != 'declineConfirm') {
+        if (OffersData.length === 0)
+            return ctx.editMessageText('Offers end!', kb(-1));
+        else
+            return ctx.editMessageText(message(currentOffer), kb(OffersData.length === 1 ? 3 : currentOffer === OffersData.length - 1 ? 2 : currentOffer === 0 ? 1 : 0));
+    }
 })
 
 bot.launch();
