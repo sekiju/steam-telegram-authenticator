@@ -10,7 +10,6 @@ const config = require('./config');
 const SteamAccountManager = require('./lib/steam/SteamAccountManager');
 const TradeOffer = require('./lib/steam/TradeOffer');
 
-const MAX_RETRIES = 4;
 let OffersData = [];
 
 ///.
@@ -40,7 +39,7 @@ let tradesManager = new TradeOfferManager({
     "language": "en"
 });
 
-let SteamBot = new SteamAccountManager(client, community, tradesManager);
+const SteamBot = new SteamAccountManager(client, community, tradesManager);
 
 try {
     SteamBot.getClient().logOn({
@@ -56,9 +55,21 @@ SteamBot.getClient().on('loggedOn', () => {
     SteamBot.printMessage('Logged in!');
 });
 
+SteamBot.getClient().on('steamGuard', async (domain, callback) => {
+    const code = getCode();
+
+    await bot.telegram.sendMessage(`Steam Guard code needed : ${code}`);
+
+    callback(code);
+});
+
 SteamBot.getClient().on('webSession', async (sessionID, cookies) => {
     SteamBot.getTradeOfferBot().setCookies(cookies);
     await SteamBot.getSteamCommunity().setCookies(cookies);
+});
+
+SteamBot.getClient().on('tradeOffers', async (count) => {
+    await bot.telegram.sendMessage(parseInt(config.owner_id), `Received ${count} new offer, add his to list!\nUse /trades command for get trades.`);
 });
 
 SteamBot.getTradeOfferBot().on("newOffer", async (offerResponse) => {
@@ -67,22 +78,18 @@ SteamBot.getTradeOfferBot().on("newOffer", async (offerResponse) => {
         SteamBot.printMessage('Received new offer GIFT offer, auto-accept it.');
         await bot.telegram.sendMessage(parseInt(config.owner_id), 'Received new offer GIFT offer, auto-accept it.');
 
-        await SteamBot.acceptTradeOffer(offerResponse, MAX_RETRIES);
+        await SteamBot.acceptTradeOffer(offerResponse);
     } else {
         OffersData.push(offerResponse);
-
-        await bot.telegram.sendMessage(parseInt(config.owner_id), `Received ${OffersData.length} new offer, add his to list!\nUse /trades command for get trades.`);
+        // await bot.telegram.sendMessage(parseInt(config.owner_id), `Received ${OffersData.length} new offer, add his to list!\nUse /trades command for get trades.`);
     }
 })
-
-let tempConfirmOffer = null;
 
 SteamBot.getTradeOfferBot().on('unknownOfferSent', async (offerResponse) => {
     if (offerResponse.state == TradeOfferManager.ETradeOfferState.CreatedNeedsConfirmation) {
         const offer = new TradeOffer(offerResponse);
         const Id = offer.getPartnerId().toString();
 
-        tempConfirmOffer = offerResponse;
         await bot.telegram.sendMessage(parseInt(config.owner_id), `Confirm this trade offer?\n\n\Trade with ${Id}\n\nTrId:${offerResponse.id}`, kbConfirm());
     }
 });
@@ -195,7 +202,7 @@ bot.on('callback_query', async (ctx) => {
             currentOffer = 0;
             break;
         case 'accept':
-            await SteamBot.acceptTradeOffer(offer, MAX_RETRIES).then((res) => {
+            await SteamBot.acceptTradeOffer(offer).then((res) => {
                 if (res === 1)
                     bot.telegram.sendMessage(ctx.chat.id, 'Trade accepted!');
             });

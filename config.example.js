@@ -9,5 +9,7 @@ module.exports = {
 
     // Telegram Data
     bot_token: "",            // create bot @BotFather
-    owner_id: ""              // create bot common command with console.log(ctx.chat.id) and get from his Id
+    owner_id: "",              // create bot common command with console.log(ctx.chat.id) and get from his Id
+
+    maxRetries: 4
 };
